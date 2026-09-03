@@ -1,0 +1,15 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": ["src/main.tsx", "worker/index.ts", "agent/main.ts", "scripts/*.mjs"],
+  "project": [
+    "src/**/*.{ts,tsx}",
+    "shared/**/*.ts",
+    "worker/**/*.ts",
+    "agent/**/*.ts",
+    "scripts/**/*.mjs"
+  ],
+  "ignoreDependencies": [
+    "@stryker-mutator/vitest-runner",
+    "@fontsource-variable/bricolage-grotesque"
+  ]
+}

@@ -1,0 +1,3 @@
+# Local dev: blank the Access vars so worker/access.ts passes through (there is no Access edge in front of localhost).
+ACCESS_TEAM_DOMAIN=
+ACCESS_AUD=

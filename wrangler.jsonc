@@ -1,0 +1,39 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bottega",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-08-01",
+  // Persist Workers Logs for every request.
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  // The built board is served as static assets; only /api/* reaches the
+  // Worker. The hostname is gated by Cloudflare Access (ADR-0009), so assets
+  // are protected at the edge and the Worker re-verifies the Access JWT on
+  // every API call — an email for the owner, a service token for agents.
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"],
+  },
+  // Migrations: npm run db:migrate:remote (CI applies them before each deploy).
+  // Create once with: npx wrangler d1 create bottega — then paste the id here.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bottega",
+      "database_id": "7b3cfae9-1b5b-4353-a6f2-0b8f86eac977",
+      "migrations_dir": "migrations",
+    },
+  ],
+  // The only public hostname. workers.dev and preview URLs are disabled so the
+  // board is reachable solely through the Access-protected custom domain.
+  "routes": [{ "pattern": "bottega.effectivecode.co.uk", "custom_domain": true }],
+  "workers_dev": false,
+  "preview_urls": false,
+  // Cloudflare Access application "bottega" (Zero Trust > Access > Applications).
+  // The Worker verifies every Cf-Access-Jwt-Assertion against these; when
+  // both are empty (local dev, where there is no Access edge) verification is
+  // skipped — see worker/access.ts.
+  "vars": {
+    "ACCESS_TEAM_DOMAIN": "plain-glitter-718b",
+    "ACCESS_AUD": "REPLACE_WITH_ACCESS_AUD",
+  },
+}

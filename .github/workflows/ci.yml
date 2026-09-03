@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  quality:
+    name: Quality gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Design-system check
+        run: npm run design
+
+      - name: Tests with coverage thresholds
+        run: npm run coverage
+
+      - name: CRAP metric gate
+        run: npm run crap
+
+      - name: Halstead difficulty gate
+        run: npm run halstead
+
+      - name: Duplication gate
+        run: npm run dup
+
+      - name: Dead code gate
+        run: npm run deadcode
+
+      - name: Build
+        run: npm run build
+
+      - name: Hook smoke test (bundled client against a local Worker)
+        run: npm run smoke:hooks
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            coverage/
+            reports/
+          retention-days: 14
+
+  mutation:
+    name: Mutation gate (no surviving mutants)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Mutation testing (Stryker, break on any survivor)
+        run: npm run mutation
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation
+          path: reports/mutation/
+          retention-days: 14
