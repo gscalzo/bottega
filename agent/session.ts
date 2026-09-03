@@ -30,6 +30,36 @@ export function heartbeatPath(io: Io, sessionId: string): string {
   return `${bottegaDir(io)}/state/heartbeat/${encodeURIComponent(sessionId)}`;
 }
 
+/** Where the SessionStart hook leaves the session id for the channel (ADR-0015). */
+export function pidMarkerPath(io: Io, claudePid: string): string {
+  return `${bottegaDir(io)}/state/pid/${claudePid}`;
+}
+
+const MAX_ANCESTORS = 12;
+
+/** "  3000 /usr/local/bin/claude" → the parent pid and the command. */
+export function parsePs(stdout: string): { ppid: number; comm: string } | null {
+  const match = /^\s*(\d+)\s+(\S+)/.exec(stdout);
+  return match === null ? null : { ppid: Number(match[1]), comm: match[2] ?? '' };
+}
+
+/**
+ * The pid of the Claude Code process this one runs under: CLAUDE_PID when
+ * the harness exports it, else the nearest ancestor named `claude`.
+ */
+export async function findClaudePid(io: Io): Promise<string | null> {
+  if (io.env.CLAUDE_PID) return io.env.CLAUDE_PID;
+  let pid = io.ppid;
+  for (let i = 0; i < MAX_ANCESTORS && pid > 1; i++) {
+    const { status, stdout } = await io.exec('ps', ['-o', 'ppid=,comm=', '-p', String(pid)], 3000);
+    const parent = status === 0 ? parsePs(stdout) : null;
+    if (parent === null) return null;
+    if (parent.comm === 'claude' || parent.comm.endsWith('/claude')) return String(pid);
+    pid = parent.ppid;
+  }
+  return null;
+}
+
 export function resolveSessionId(io: Io, flag: string | undefined): string | null {
   const fromEnv = flag ?? io.env.BOTTEGA_SESSION_ID ?? io.env.CLAUDE_CODE_SESSION_ID;
   if (fromEnv) return fromEnv;

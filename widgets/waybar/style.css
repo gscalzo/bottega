@@ -1,0 +1,13 @@
+/* Bottega in Waybar — the same state colours as the board (ADR-0011). */
+#custom-bottega {
+  padding: 0 10px;
+}
+#custom-bottega.waiting {
+  color: #b4235a;
+}
+#custom-bottega.working {
+  color: #1f5fbf;
+}
+#custom-bottega.quiet {
+  opacity: 0.6;
+}

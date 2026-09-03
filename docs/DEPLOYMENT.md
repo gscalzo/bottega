@@ -68,6 +68,31 @@ and `~/.codex/skills`, and registers the five hooks in
 
 Re-run `npm run install:agent` after pulling a new version.
 
+## 5. The watcher, the channel and the bar (ADR-0015)
+
+The installer also:
+
+- starts **the watcher** as a login service: `launchctl` on macOS
+  (`~/Library/LaunchAgents/uk.co.effectivecode.bottega.watch.plist`, log in
+  `~/.bottega/watch.log`), `systemctl --user` on Linux
+  (`bottega-watch.service`). It queues your notes into idle Codex sessions
+  and raises a notification when an agent is waiting for you.
+- registers **the Claude Code channel** as the user-scoped MCP server
+  `bottega`. Notes reach a Claude session only when it was started with the
+  channels preview flag, so alias it:
+
+  ```bash
+  alias claude='claude --dangerously-load-development-channels server:bottega'
+  ```
+
+- copies the **widgets** to `~/.bottega/widgets/`. macOS: `brew install
+--cask swiftbar`, then link `bottega.10s.sh` into SwiftBar's plugin folder.
+  Omarchy: merge `waybar/config.jsonc` and `waybar/style.css` into
+  `~/.config/waybar/` and add `custom/bottega` to a modules list.
+
+`~/.bottega/bin/bottega status` prints the board for a shell;
+`--swiftbar`, `--waybar` and `--json` are the other shapes.
+
 ## Local development
 
 ```bash

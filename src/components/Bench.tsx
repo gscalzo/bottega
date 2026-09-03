@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { NoteTarget, RoomView } from '../../shared/types';
-import { hereCount } from '../lib/copy';
+import { hereCount } from '../../shared/copy';
 import { Compose } from './Compose';
 import { Tag } from './Tag';
 

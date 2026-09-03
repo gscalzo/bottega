@@ -9,10 +9,14 @@
  *   4. register the hooks in ~/.claude/settings.json and ~/.codex/hooks.json
  *      (idempotent: entries are recognised by their command; a backup of
  *      each file is written once before its first change)
- *   5. print the standing-instruction block for the global CLAUDE.md /
+ *   5. install the watcher as a login service (launchd on macOS, a systemd
+ *      user unit on Linux), register the Claude Code channel server with
+ *      `claude mcp add`, and copy the menu bar / Waybar widgets (ADR-0015)
+ *   6. print the standing-instruction block for the global CLAUDE.md /
  *      AGENTS.md — printed, never written: those files are yours.
  *
- * Flags: --home <dir> (default $HOME), --no-hooks (skip step 4).
+ * Flags: --home <dir> (default $HOME), --no-hooks (skip step 4),
+ *        --no-services (skip the watcher service and the channel registration).
  */
 import { execFileSync } from 'node:child_process';
 import {
@@ -39,6 +43,7 @@ const flag = (name) => {
 };
 const HOME = flag('--home') ?? homedir();
 const WITH_HOOKS = !args.includes('--no-hooks');
+const WITH_SERVICES = !args.includes('--no-services');
 const DIR = path.join(HOME, '.bottega');
 const BIN = path.join(DIR, 'bin');
 const BUNDLE = path.join(BIN, 'bottega.mjs');
@@ -72,6 +77,140 @@ Never post from a subagent. If Bottega is unreachable, carry on silently.
 
 function step(msg) {
   console.log(`• ${msg}`);
+}
+
+function tryRun(cmd, cmdArgs) {
+  try {
+    return execFileSync(cmd, cmdArgs, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch {
+    return null;
+  }
+}
+
+/** launchd and systemd start with a bare PATH; give the watcher the tools it calls. */
+function servicePath() {
+  const dirs = new Set(['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin']);
+  for (const tool of ['codex', 'node']) {
+    const found = tryRun('which', [tool]);
+    if (found) dirs.add(path.dirname(found.trim()));
+  }
+  return [...dirs].join(':');
+}
+
+function launchdService() {
+  const label = 'uk.co.effectivecode.bottega.watch';
+  const plist = path.join(HOME, 'Library', 'LaunchAgents', `${label}.plist`);
+  const log = path.join(DIR, 'watch.log');
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>${label}</string>
+  <key>ProgramArguments</key>
+  <array><string>${process.execPath}</string><string>${BUNDLE}</string><string>watch</string></array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>${log}</string>
+  <key>StandardErrorPath</key><string>${log}</string>
+  <key>EnvironmentVariables</key>
+  <dict><key>PATH</key><string>${servicePath()}</string></dict>
+</dict>
+</plist>
+`;
+  mkdirSync(path.dirname(plist), { recursive: true });
+  writeFileSync(plist, xml);
+  const domain = `gui/${process.getuid()}`;
+  tryRun('launchctl', ['bootout', domain, plist]);
+  const ok = tryRun('launchctl', ['bootstrap', domain, plist]) !== null;
+  step(
+    ok
+      ? `watcher running under launchd (${plist}, log ${log})`
+      : `wrote ${plist}; load it with: launchctl bootstrap ${domain} ${plist}`,
+  );
+}
+
+function systemdService() {
+  const unit = path.join(HOME, '.config', 'systemd', 'user', 'bottega-watch.service');
+  mkdirSync(path.dirname(unit), { recursive: true });
+  writeFileSync(
+    unit,
+    `[Unit]
+Description=Bottega watcher — wakes idle agents, notifies when one needs you
+After=network-online.target
+
+[Service]
+ExecStart=${process.execPath} ${BUNDLE} watch
+Restart=always
+RestartSec=5
+Environment=PATH=${servicePath()}
+
+[Install]
+WantedBy=default.target
+`,
+  );
+  const ok =
+    tryRun('systemctl', ['--user', 'daemon-reload']) !== null &&
+    tryRun('systemctl', ['--user', 'enable', '--now', 'bottega-watch.service']) !== null;
+  step(
+    ok
+      ? `watcher running under systemd (${unit})`
+      : `wrote ${unit}; enable it with: systemctl --user enable --now bottega-watch`,
+  );
+}
+
+function channelRegistration() {
+  if (tryRun('which', ['claude']) === null) {
+    step(
+      'claude not on PATH — register the channel later with: claude mcp add --scope user bottega -- node ' +
+        BUNDLE +
+        ' channel',
+    );
+    return;
+  }
+  if (tryRun('claude', ['mcp', 'get', 'bottega']) !== null) {
+    step('Claude Code channel already registered (claude mcp get bottega)');
+    return;
+  }
+  const ok =
+    tryRun('claude', [
+      'mcp',
+      'add',
+      '--scope',
+      'user',
+      'bottega',
+      '--',
+      process.execPath,
+      BUNDLE,
+      'channel',
+    ]) !== null;
+  step(
+    ok
+      ? 'Claude Code channel registered as MCP server "bottega" (user scope)'
+      : 'could not register the channel; run: claude mcp add --scope user bottega -- node ' +
+          BUNDLE +
+          ' channel',
+  );
+}
+
+function widgets() {
+  const dest = path.join(DIR, 'widgets');
+  mkdirSync(path.join(dest, 'waybar'), { recursive: true });
+  for (const file of ['bottega.10s.sh', 'waybar/config.jsonc', 'waybar/style.css']) {
+    copyFileSync(path.join(ROOT, 'widgets', file), path.join(dest, file));
+  }
+  chmodSync(path.join(dest, 'bottega.10s.sh'), 0o755);
+  step(`widgets copied to ${dest}`);
+}
+
+function services() {
+  if (process.platform === 'darwin') launchdService();
+  else if (process.platform === 'linux') systemdService();
+  else
+    step(
+      `no watcher service for ${process.platform}; run "${path.join(BIN, 'bottega')} watch" yourself`,
+    );
+  channelRegistration();
+  widgets();
 }
 
 function bundle() {
@@ -177,8 +316,9 @@ if (WITH_HOOKS) {
   registerHooks(path.join(HOME, '.claude', 'settings.json'), 'claude');
   registerHooks(path.join(HOME, '.codex', 'hooks.json'), 'codex');
 }
+if (WITH_SERVICES) services();
 console.log(`
-Done. Two things only you can do:
+Done. What only you can do:
 
 1. Put the machine's Access service token in ${path.join(DIR, 'env')}, then check:
      ${path.join(BIN, 'bottega')} ping
@@ -186,4 +326,11 @@ Done. Two things only you can do:
 
 2. Add this block to ~/.claude/CLAUDE.md and ~/.codex/AGENTS.md:
 
-${INSTRUCTIONS}`);
+${INSTRUCTIONS}
+3. Start Claude Code with the channel so the owner's notes can wake it (ADR-0015):
+     claude --dangerously-load-development-channels server:bottega
+   (an alias in your shell profile; the flag is what the channels preview requires)
+
+4. Menu bar (macOS): brew install --cask swiftbar, then link ${path.join(DIR, 'widgets', 'bottega.10s.sh')}
+   into SwiftBar's plugin folder. Waybar (Omarchy): merge ${path.join(DIR, 'widgets', 'waybar', 'config.jsonc')}
+   and style.css into ~/.config/waybar/.`);

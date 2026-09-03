@@ -116,7 +116,9 @@ describe('GET /api/rooms/:id', () => {
       author: { type: 'owner' },
       toAgentId: null,
       handled: false,
-      deliveredTo: [{ agentId: 'a1', agentName: 'claude · raffaello · a1', at: t.clock.now }],
+      deliveredTo: [
+        { agentId: 'a1', agentName: 'claude · raffaello · a1', at: t.clock.now, via: 'hook' },
+      ],
     });
     expect(r.messages[2]?.toAgentId).toBe('a1');
     expect(r.messages[1]?.author).toEqual({

@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import type { EventView, MessageView } from '../../shared/types';
-import { kindLabel, seenBy, shortId } from '../lib/copy';
-import { when } from '../lib/format';
+import { kindLabel, seenBy, shortId } from '../../shared/copy';
+import { when } from '../../shared/format';
 
 interface Props {
   messages: readonly MessageView[];

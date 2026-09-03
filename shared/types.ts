@@ -123,10 +123,14 @@ export interface BoardRes {
 
 export type MessageAuthor = { type: 'owner' } | { type: 'agent'; id: string; name: string };
 
+/** How a note reached an agent (ADR-0015). */
+export type DeliveryVia = 'hook' | 'queue' | 'channel';
+
 interface Delivery {
   agentId: string;
   agentName: string;
   at: number;
+  via: DeliveryVia;
 }
 
 export interface MessageView {
@@ -170,4 +174,28 @@ export interface HandledReq {
 export interface PingRes {
   ok: true;
   caller: 'owner' | 'agent' | 'local';
+}
+
+/** A note the watcher or the channel still has to push (ADR-0015). */
+export interface PendingMessage {
+  id: number;
+  at: number;
+  body: string;
+  scope: 'room' | 'direct';
+  agent: { id: string; harness: Harness; roomId: string; name: string };
+}
+
+export interface PendingRes {
+  messages: PendingMessage[];
+}
+
+export interface DeliveredReq {
+  messageId: number;
+  sessionId: string;
+  via: Exclude<DeliveryVia, 'hook'>;
+}
+
+export interface DeliveredRes {
+  /** False when it had already been delivered to that agent. */
+  delivered: boolean;
 }

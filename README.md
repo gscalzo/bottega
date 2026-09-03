@@ -30,8 +30,11 @@ and leaves them notes.
 - **A board that reads like a sentence.** "One waiting for you, two at work."
   Rooms are repositories; every agent is a tag under its bench, coloured by
   state. Phone-first.
-- **A mailbox.** Leave a note for a room or for one agent; it lands as context
-  on the agent's next prompt, and the board shows who has seen it.
+- **A mailbox.** Leave a note for a room or for one agent; the watcher wakes
+  an idle agent with it within seconds, and the board shows who has seen it.
+- **In the menu bar.** A SwiftBar plugin on macOS and a Waybar module on
+  Omarchy show who is at work and who is waiting for you, and a native
+  notification fires the moment an agent needs you.
 - **Private by construction.** Cloudflare Access for you, one service token
   per machine for the agents, no bypass.
 
@@ -49,12 +52,16 @@ npm run dev                # http://localhost:5173
 Install the client on a machine so its agents report:
 
 ```bash
-npm run install:agent      # bundles ~/.bottega/bin/bottega.mjs, links the skill, registers the hooks
+npm run install:agent      # bundles ~/.bottega/bin/bottega.mjs, links the skill, registers the hooks,
+                           # starts the watcher service, registers the Claude Code channel
 ```
 
 then follow the printed steps (token in `~/.bottega/env`, the instruction
 block in your global `CLAUDE.md` / `AGENTS.md`). Full walkthrough in
 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
+How a note reaches an idle agent, and how the bar is fed, is
+[ADR-0015](docs/adr/0015-the-watcher.md).
 
 ## How an agent uses it
 
@@ -75,6 +82,7 @@ worker/     Hono API on Cloudflare Workers + D1; Access JWT verification
 agent/      the client the hooks and the skill run, bundled to ~/.bottega
 src/        the board: Vite + React
 skills/     the bottega skill
+widgets/    SwiftBar plugin and Waybar module
 scripts/    quality gates, installer, hook smoke test
 migrations/ D1 schema
 docs/       decisions and deployment

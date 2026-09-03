@@ -2,7 +2,14 @@
  * Every SQL statement the Worker runs, typed at the edges. Routes never
  * touch D1 directly, so the schema (migrations/) has exactly one client.
  */
-import type { AgentRow, HookEvent, MessageKind, RoomKind } from '../shared/types';
+import type {
+  AgentRow,
+  DeliveryVia,
+  Harness,
+  HookEvent,
+  MessageKind,
+  RoomKind,
+} from '../shared/types';
 
 export interface RoomRow {
   id: string;
@@ -35,6 +42,18 @@ export interface DeliveryRow {
   agent_id: string;
   agent_name: string;
   at: number;
+  via: DeliveryVia;
+}
+
+export interface PendingRow {
+  id: number;
+  at: number;
+  body: string;
+  to_agent_id: string | null;
+  agent_id: string;
+  harness: Harness;
+  room_id: string;
+  name: string;
 }
 
 export interface UndeliveredRow {
@@ -229,7 +248,7 @@ export async function listDeliveries(
   const placeholders = messageIds.map(() => '?').join(', ');
   const { results } = await db
     .prepare(
-      `SELECT d.message_id, d.agent_id, a.name AS agent_name, d.at FROM deliveries d
+      `SELECT d.message_id, d.agent_id, a.name AS agent_name, d.at, d.via FROM deliveries d
        JOIN agents a ON a.id = d.agent_id WHERE d.message_id IN (${placeholders}) ORDER BY d.at`,
     )
     .bind(...messageIds)
@@ -267,8 +286,59 @@ export async function recordDeliveries(
 ): Promise<void> {
   // Stryker disable next-line ConditionalExpression: D1 rejects an empty batch; the test fake does not
   if (messageIds.length === 0) return;
-  const stmt = db.prepare('INSERT INTO deliveries (message_id, agent_id, at) VALUES (?, ?, ?)');
+  const stmt = db.prepare(
+    "INSERT INTO deliveries (message_id, agent_id, at, via) VALUES (?, ?, ?, 'hook')",
+  );
   await db.batch(messageIds.map((id) => stmt.bind(id, agentId, at)));
+}
+
+/** One delivery by the watcher or the channel; false when already recorded. */
+export async function recordDelivery(
+  db: D1Database,
+  messageId: number,
+  agentId: string,
+  at: number,
+  via: DeliveryVia,
+): Promise<boolean> {
+  const { meta } = await db
+    .prepare('INSERT OR IGNORE INTO deliveries (message_id, agent_id, at, via) VALUES (?, ?, ?, ?)')
+    .bind(messageId, agentId, at, via)
+    .run();
+  return meta.changes > 0;
+}
+
+const PENDING_SELECT = `SELECT m.id, m.at, m.body, m.to_agent_id, a.id AS agent_id, a.harness, a.room_id, a.name
+  FROM agents a
+  JOIN messages m ON m.kind = 'owner'
+   AND (m.to_agent_id = a.id OR (m.to_agent_id IS NULL AND m.room_id = a.room_id AND m.at >= a.first_seen))
+  WHERE a.state != 'gone'
+    AND NOT EXISTS (SELECT 1 FROM deliveries d WHERE d.message_id = m.id AND d.agent_id = a.id)`;
+
+/** Undelivered owner notes for every live agent on a host (the watcher, ADR-0015). */
+export async function listPendingForHost(
+  db: D1Database,
+  host: string,
+  since: number,
+  limit: number,
+): Promise<PendingRow[]> {
+  const { results } = await db
+    .prepare(`${PENDING_SELECT} AND a.host = ? AND a.last_seen >= ? ORDER BY m.id LIMIT ?`)
+    .bind(host, since, limit)
+    .all<PendingRow>();
+  return results;
+}
+
+/** Undelivered owner notes for one session (the channel, ADR-0015). */
+export async function listPendingForSession(
+  db: D1Database,
+  sessionId: string,
+  limit: number,
+): Promise<PendingRow[]> {
+  const { results } = await db
+    .prepare(`${PENDING_SELECT} AND a.id = ? ORDER BY m.id LIMIT ?`)
+    .bind(sessionId, limit)
+    .all<PendingRow>();
+  return results;
 }
 
 export async function countOpenSuggestions(db: D1Database): Promise<number> {

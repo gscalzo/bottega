@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { ago } from '../lib/format';
+import { ago } from '../../shared/format';
 
 interface Props {
   refreshedAt: number | null;

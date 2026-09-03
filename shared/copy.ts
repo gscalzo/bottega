@@ -1,6 +1,6 @@
-/** The words on the board. Sentences, not labels (ADR-0011). */
-import type { AgentView, BoardCounts, EffectiveState, MessageKind } from '../../shared/types';
+/** The words on the board, in the menu bar and in the watcher. Pure. */
 import { ago, clock, duration } from './format';
+import type { AgentView, BoardCounts, EffectiveState, MessageKind } from './types';
 
 const WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
 
@@ -8,7 +8,7 @@ export function count(n: number): string {
   return WORDS[n] ?? String(n);
 }
 
-/** The home page hero: who needs the eye comes first. */
+/** The home page hero and the menu bar line: who needs the eye comes first. */
 export function headline(counts: BoardCounts): string {
   const parts: string[] = [];
   if (counts.waiting > 0) parts.push(`${count(counts.waiting)} waiting for you`);

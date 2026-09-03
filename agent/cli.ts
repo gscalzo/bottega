@@ -5,13 +5,18 @@
 import { MESSAGE_MAX_CHARS } from '../shared/rules';
 import type { AgentMessageKind, AgentPostReq, AgentPostRes, PingRes } from '../shared/types';
 import { ApiError, call } from './api';
+import { runChannel } from './channel';
 import { loadConfig } from './config';
 import { runHook } from './hook';
 import type { Io } from './io';
 import { resolveSessionId } from './session';
+import { fetchBoard, plain, swiftBar, waybar } from './status';
+import { runWatch } from './watch';
 
 const KINDS: ReadonlySet<string> = new Set(['task', 'progress', 'done', 'question', 'suggest']);
 const POST_TIMEOUT_MS = 8000;
+const DEFAULT_INTERVAL_S = 5;
+const SESSION_TIMEOUT_MS = 120_000;
 
 export const USAGE = `bottega — report to the owner's agent board
 
@@ -22,6 +27,9 @@ export const USAGE = `bottega — report to the owner's agent board
   bottega suggest "<idea>"                  an idea for Bottega itself
   bottega ping                              check the connection and the credentials
   bottega whoami                            the session id and URL this command would use
+  bottega status [--json|--swiftbar|--waybar]  the board, for a shell, a menu bar or Waybar
+  bottega watch [--interval <s>] [--once]   the machine's watcher: notifications, Codex queue
+  bottega channel                           Claude Code channel server (started by the session)
   bottega hook [claude|codex]               harness hook entry (stdin: hook JSON)
 
 Options: --session <id>   the harness session id, when BOTTEGA_SESSION_ID /
@@ -32,21 +40,33 @@ export interface ParsedArgs {
   command: string;
   text: string;
   session: string | undefined;
+  interval: string | undefined;
+  flags: Set<string>;
 }
+
+const VALUED = new Set(['--session', '--interval']);
 
 export function parseArgs(argv: readonly string[]): ParsedArgs {
   const rest: string[] = [];
-  let session: string | undefined;
-  let takeSession = false;
+  const values: Record<string, string> = {};
+  const flags = new Set<string>();
+  let pending: string | null = null;
   for (const arg of argv) {
-    if (takeSession) {
-      session = arg;
-      takeSession = false;
-    } else if (arg === '--session') takeSession = true;
+    if (pending !== null) {
+      values[pending] = arg;
+      pending = null;
+    } else if (VALUED.has(arg)) pending = arg;
+    else if (arg.startsWith('--')) flags.add(arg.slice(2));
     else rest.push(arg);
   }
   const [command = 'help', ...words] = rest;
-  return { command, text: words.join(' ').trim(), session };
+  return {
+    command,
+    text: words.join(' ').trim(),
+    session: values['--session'],
+    interval: values['--interval'],
+    flags,
+  };
 }
 
 async function post(io: Io, kind: AgentMessageKind, text: string, session: string | undefined) {
@@ -88,14 +108,43 @@ function usage(io: Io, problem?: string): 2 {
   return 2;
 }
 
+async function status(io: Io, flags: Set<string>) {
+  const config = loadConfig(io);
+  const board = await fetchBoard(io, config);
+  if (flags.has('json')) io.stdout(`${JSON.stringify(board)}\n`);
+  else if (flags.has('swiftbar')) io.stdout(swiftBar(board, config.url));
+  else if (flags.has('waybar')) io.stdout(waybar(board, config.url));
+  else io.stdout(plain(board));
+  return 0;
+}
+
+function intervalMs(args: ParsedArgs): number | null {
+  const seconds = args.interval === undefined ? DEFAULT_INTERVAL_S : Number(args.interval);
+  return Number.isFinite(seconds) && seconds >= 1 ? seconds * 1000 : null;
+}
+
 async function dispatch(io: Io, args: ParsedArgs, readStdin: () => Promise<string>) {
-  const { command, text, session } = args;
+  const { command, text, session, flags } = args;
   if (command === 'hook') return runHook(io, text, await readStdin());
   if (KINDS.has(command)) return post(io, command as AgentMessageKind, text, session);
   if (command === 'ping') return ping(io);
   if (command === 'whoami') return whoami(io, session);
+  if (command === 'status') return status(io, flags);
+  if (command === 'watch' || command === 'channel') return daemon(io, args);
   if (command === 'help') return usage(io);
   return usage(io, `unknown command "${command}"`);
+}
+
+async function daemon(io: Io, args: ParsedArgs) {
+  const ms = intervalMs(args);
+  if (ms === null) return usage(io, '--interval must be a number of seconds, at least 1');
+  const passes = args.flags.has('once') ? 1 : undefined;
+  if (args.command === 'watch') return runWatch(io, loadConfig(io), { intervalMs: ms, passes });
+  return runChannel(io, loadConfig(io), {
+    intervalMs: ms,
+    sessionTimeoutMs: SESSION_TIMEOUT_MS,
+    passes,
+  });
 }
 
 export async function run(

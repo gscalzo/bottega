@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { AgentEventRes, AgentPostRes, AgentRes, BoardRes } from '../shared/types';
+import type { AgentEventRes, AgentPostRes, AgentRes, BoardRes, PendingRes } from '../shared/types';
 import { createTestApp, event, session } from './test/harness';
 import type { TestApp } from './test/harness';
 
 const MIN = 60_000;
+const BOARD_WINDOW_MS_TEST = 24 * 60 * 60 * 1000;
 const asEvent = async (res: Response): Promise<AgentEventRes> => {
   expect(res.status).toBe(200);
   return res.json<AgentEventRes>();
@@ -345,5 +346,103 @@ describe('app plumbing', () => {
     expect(await res.json()).toEqual({ error: 'internal error' });
     expect(spy).toHaveBeenCalledOnce();
     spy.mockRestore();
+  });
+});
+
+describe('the watcher routes (ADR-0015)', () => {
+  const pending = async (t: TestApp, query: string) => {
+    const res = await t.call('GET', `/api/agent/pending?${query}`);
+    expect(res.status).toBe(200);
+    return (await res.json<PendingRes>()).messages;
+  };
+  const delivered = (t: TestApp, body: unknown) => t.call('POST', '/api/agent/delivered', body);
+
+  it('serves the board to the machine token', async () => {
+    const t = createTestApp();
+    await event(t, 'session_start', 's1');
+    const res = await t.call('GET', '/api/agent/summary');
+    expect(res.status).toBe(200);
+    const board = await res.json<BoardRes>();
+    expect(board.counts).toEqual({ working: 0, waiting: 0, idle: 1, stale: 0 });
+    expect(board.rooms[0]?.agents[0]?.id).toBe('s1');
+  });
+
+  it('lists undelivered notes by host or by session, live agents only', async () => {
+    const t = createTestApp();
+    await event(t, 'session_start', 'a1');
+    await event(t, 'session_start', 'b1', { repo: 'other' });
+    await t.call('POST', '/api/agent/events', {
+      event: 'session_start',
+      session: { ...session('c1'), host: 'desk' },
+    });
+    await event(t, 'session_start', 'gone1');
+    t.clock.now += MIN;
+    await ownerMessage(t, { roomId: 'raffaello' }, 'room note');
+    await ownerMessage(t, { toAgentId: 'b1' }, 'for b1');
+    await ownerMessage(t, { toAgentId: 'c1' }, 'for c1');
+    await event(t, 'session_end', 'gone1');
+    const mac = await pending(t, 'host=macbook');
+    expect(mac.map((m) => [m.id, m.agent.id, m.scope, m.body])).toEqual([
+      [1, 'a1', 'room', 'room note'],
+      [2, 'b1', 'direct', 'for b1'],
+    ]);
+    expect(mac[0]?.agent).toEqual({
+      id: 'a1',
+      harness: 'claude',
+      roomId: 'raffaello',
+      name: 'claude · raffaello · a1',
+    });
+    expect((await pending(t, 'host=desk')).map((m) => m.body)).toEqual(['room note', 'for c1']);
+    expect((await pending(t, 'session=b1')).map((m) => m.body)).toEqual(['for b1']);
+    expect(await pending(t, 'session=gone1')).toEqual([]);
+    expect(await pending(t, 'host=nowhere')).toEqual([]);
+    t.clock.now += BOARD_WINDOW_MS_TEST + 1;
+    expect(await pending(t, 'host=macbook')).toEqual([]);
+    for (const q of ['', 'host=macbook&session=a1']) {
+      const res = await t.call('GET', `/api/agent/pending?${q}`);
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: 'exactly one of host / session' });
+    }
+  });
+
+  it('records a delivery once, then the hook does not repeat it', async () => {
+    const t = createTestApp();
+    await event(t, 'session_start', 'a1');
+    t.clock.now += MIN;
+    await ownerMessage(t, { toAgentId: 'a1' }, 'note');
+    const first = await delivered(t, { messageId: 1, sessionId: 'a1', via: 'queue' });
+    expect(first.status).toBe(200);
+    expect(await first.json()).toEqual({ delivered: true });
+    expect(
+      await (await delivered(t, { messageId: 1, sessionId: 'a1', via: 'channel' })).json(),
+    ).toEqual({
+      delivered: false,
+    });
+    expect(await pending(t, 'session=a1')).toEqual([]);
+    expect((await asEvent(await event(t, 'prompt', 'a1'))).messages).toEqual([]);
+    expect(t.raw.prepare('SELECT via FROM deliveries').all()).toEqual([{ via: 'queue' }]);
+    const room = await (await t.call('GET', '/api/rooms/raffaello')).json();
+    expect(
+      (room as { messages: { deliveredTo: { via: string }[] }[] }).messages[0]?.deliveredTo[0]?.via,
+    ).toBe('queue');
+  });
+
+  it('validates deliveries', async () => {
+    const t = createTestApp();
+    await event(t, 'session_start', 'a1');
+    for (const body of [
+      null,
+      { messageId: 1.5, sessionId: 'a1', via: 'queue' },
+      { messageId: 1, sessionId: '', via: 'queue' },
+      { messageId: 1, sessionId: 'a1', via: 'hook' },
+      { messageId: 1, sessionId: 'a1' },
+    ]) {
+      const res = await delivered(t, body);
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: 'messageId, sessionId and via (queue | channel)' });
+    }
+    const ghost = await delivered(t, { messageId: 1, sessionId: 'ghost', via: 'queue' });
+    expect(ghost.status).toBe(404);
+    expect(await ghost.json()).toEqual({ error: 'agent not found' });
   });
 });

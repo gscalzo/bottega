@@ -3,7 +3,7 @@ import { Bench } from '../components/Bench';
 import { Shell } from '../components/Shell';
 import type { NoteTarget } from '../../shared/types';
 import { api } from '../lib/api';
-import { count, headline } from '../lib/copy';
+import { count, headline } from '../../shared/copy';
 import { usePoll } from '../lib/usePoll';
 
 const POLL_MS = 5000;

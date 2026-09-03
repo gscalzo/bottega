@@ -96,6 +96,12 @@ try {
   cli(['task', 'Smoke testing the hook path']);
   cli(['question', 'Does the board show me waiting?']);
   hook({ hook_event_name: 'Stop', last_assistant_message: 'Smoke run complete.' });
+  const status = JSON.parse(cli(['status', '--json']));
+  if (status.counts?.waiting < 1) fail(`status --json shows ${status.counts?.waiting} waiting`);
+  if (!cli(['status', '--swiftbar']).startsWith('◆'))
+    fail('status --swiftbar does not lead with the waiting glyph');
+  if (JSON.parse(cli(['status', '--waybar'])).class !== 'waiting')
+    fail('status --waybar class is not waiting');
 
   const board = await (await fetch(`${URL_BASE}/api/board`)).json();
   const room = board.rooms.find((r) => r.id === 'bottega');

@@ -1,0 +1,12 @@
+// Bottega in Waybar (Omarchy and any Hyprland/Sway bar) — ADR-0015.
+// Merge into ~/.config/waybar/config.jsonc and add "custom/bottega" to a
+// modules list (e.g. "modules-right").
+{
+  "custom/bottega": {
+    "exec": "~/.bottega/bin/bottega status --waybar",
+    "return-type": "json",
+    "interval": 10,
+    "tooltip": true,
+    "on-click": "xdg-open https://bottega.effectivecode.co.uk",
+  },
+}

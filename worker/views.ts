@@ -8,9 +8,10 @@ import type {
   EventView,
   MessageAuthor,
   MessageView,
+  PendingMessage,
   RoomView,
 } from '../shared/types';
-import type { DeliveryRow, EventRow, MessageRow, NewMessage, RoomRow } from './db';
+import type { DeliveryRow, EventRow, MessageRow, NewMessage, PendingRow, RoomRow } from './db';
 
 export function agentView(row: AgentRow, now: number): AgentView {
   return {
@@ -46,7 +47,7 @@ function messageView(row: MessageRow, deliveries: readonly DeliveryRow[]): Messa
     handled: row.handled !== 0,
     deliveredTo: deliveries
       .filter((d) => d.message_id === row.id)
-      .map((d) => ({ agentId: d.agent_id, agentName: d.agent_name, at: d.at })),
+      .map((d) => ({ agentId: d.agent_id, agentName: d.agent_name, at: d.at, via: d.via })),
   };
 }
 
@@ -66,6 +67,16 @@ export function newMessageView(id: number, m: NewMessage, author: MessageAuthor)
     toAgentId: m.to_agent_id,
     handled: false,
     deliveredTo: [],
+  };
+}
+
+export function pendingView(row: PendingRow): PendingMessage {
+  return {
+    id: row.id,
+    at: row.at,
+    body: row.body,
+    scope: row.to_agent_id === null ? 'room' : 'direct',
+    agent: { id: row.agent_id, harness: row.harness, roomId: row.room_id, name: row.name },
   };
 }
 

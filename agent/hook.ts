@@ -15,7 +15,7 @@ import type {
 import { call } from './api';
 import { loadConfig } from './config';
 import type { Io } from './io';
-import { heartbeatPath, markerPath, repoSlugFor } from './session';
+import { findClaudePid, heartbeatPath, markerPath, pidMarkerPath, repoSlugFor } from './session';
 
 export interface HookInput {
   hook_event_name?: string;
@@ -143,11 +143,20 @@ export function planHook(io: Io, harnessArg: string, stdin: string): Plan | null
   return { req, input, sessionId: input.session_id, cwd };
 }
 
-/** Local bookkeeping: markers for the skill CLI, the heartbeat stamp. */
-export function recordLocally(io: Io, plan: Plan): void {
+/** The channel finds its session through a file named after the Claude pid. */
+async function pidMarker(io: Io, plan: Plan): Promise<string | null> {
+  if (plan.req.session.harness !== 'claude') return null;
+  const pid = await findClaudePid(io);
+  return pid === null ? null : pidMarkerPath(io, pid);
+}
+
+/** Local bookkeeping: markers for the skill CLI and the channel, the heartbeat stamp. */
+export async function recordLocally(io: Io, plan: Plan): Promise<void> {
   const { event } = plan.req;
   if (event === 'session_start') {
     io.writeFile(markerPath(io, plan.cwd), `${plan.sessionId}\n`);
+    const pid = await pidMarker(io, plan);
+    if (pid !== null) io.writeFile(pid, `${plan.sessionId}\n`);
     if (io.env.CLAUDE_ENV_FILE) {
       io.appendFile(io.env.CLAUDE_ENV_FILE, `export BOTTEGA_SESSION_ID=${plan.sessionId}\n`);
     }
@@ -156,6 +165,8 @@ export function recordLocally(io: Io, plan: Plan): void {
   } else if (event === 'session_end') {
     const marker = markerPath(io, plan.cwd);
     if (io.readFile(marker)?.trim() === plan.sessionId) io.deleteFile(marker);
+    const pid = await pidMarker(io, plan);
+    if (pid !== null) io.deleteFile(pid);
     io.deleteFile(heartbeatPath(io, plan.sessionId));
   }
 }
@@ -165,7 +176,7 @@ export async function runHook(io: Io, harnessArg: string, stdin: string): Promis
     const plan = planHook(io, harnessArg, stdin);
     // Stryker disable next-line ConditionalExpression: without the guard recordLocally throws on null and the catch below is just as silent
     if (!plan) return 0;
-    recordLocally(io, plan);
+    await recordLocally(io, plan);
     const res = await call<AgentEventRes>(io, loadConfig(io), {
       method: 'POST',
       path: '/api/agent/events',

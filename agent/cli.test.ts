@@ -14,26 +14,41 @@ const posted: AgentPostRes = {
 
 describe('parseArgs', () => {
   it('splits the command, joins the text and lifts --session from anywhere', () => {
-    expect(parseArgs([])).toEqual({ command: 'help', text: '', session: undefined });
-    expect(parseArgs(['task', 'fix', 'the', 'build'])).toEqual({
+    expect(parseArgs([])).toEqual({
+      command: 'help',
+      text: '',
+      session: undefined,
+      interval: undefined,
+      flags: new Set(),
+    });
+    expect(parseArgs(['task', 'fix', 'the', 'build'])).toMatchObject({
       command: 'task',
       text: 'fix the build',
       session: undefined,
     });
-    expect(parseArgs(['--session', 'x', 'done', ' shipped '])).toEqual({
+    expect(parseArgs(['--session', 'x', 'done', ' shipped '])).toMatchObject({
       command: 'done',
       text: 'shipped',
       session: 'x',
     });
-    expect(parseArgs(['done', 'a', '--session', 'y', 'b'])).toEqual({
+    expect(parseArgs(['done', 'a', '--session', 'y', 'b'])).toMatchObject({
       command: 'done',
       text: 'a b',
       session: 'y',
     });
-    expect(parseArgs(['done', '--session'])).toEqual({
+    expect(parseArgs(['done', '--session'])).toMatchObject({
       command: 'done',
       text: '',
       session: undefined,
+    });
+    expect(parseArgs(['status', '--waybar'])).toMatchObject({
+      command: 'status',
+      flags: new Set(['waybar']),
+    });
+    expect(parseArgs(['watch', '--interval', '9', '--once'])).toMatchObject({
+      command: 'watch',
+      interval: '9',
+      flags: new Set(['once']),
     });
   });
 });
@@ -151,5 +166,50 @@ describe('run', () => {
     expect(JSON.parse(claude.requests[0]?.init.body ?? '')).toMatchObject({
       session: { harness: 'claude' },
     });
+  });
+});
+
+describe('status, watch and channel commands', () => {
+  const empty = {
+    now: 1_700_000_000_000,
+    counts: { working: 0, waiting: 0, idle: 0, stale: 0 },
+    rooms: [],
+    openSuggestions: 0,
+  };
+  it('renders the board in the asked format', async () => {
+    for (const [flag, expected] of [
+      [[], 'Nobody in the workshop.\n'],
+      [['--json'], `${JSON.stringify(empty)}\n`],
+      [['--swiftbar'], '◇\n---'],
+      [['--waybar'], '{"text":"◇"'],
+    ] as const) {
+      const fake = fakeIo({ responses: [json(200, empty)] });
+      expect(await run(['status', ...flag], stdin(), fake.io)).toBe(0);
+      expect(fake.out[0]?.startsWith(expected)).toBe(true);
+    }
+  });
+  it('runs one watcher pass on --once with the interval asked', async () => {
+    const fake = fakeIo({ responses: [json(200, empty), json(200, { messages: [] })] });
+    expect(await run(['watch', '--once', '--interval', '2'], stdin(), fake.io)).toBe(0);
+    expect(fake.sleeps).toEqual([2000]);
+    expect(fake.requests).toHaveLength(2);
+    const one = fakeIo({ responses: [json(200, empty), json(200, { messages: [] })] });
+    expect(await run(['watch', '--once', '--interval', '1'], stdin(), one.io)).toBe(0);
+    expect(one.sleeps).toEqual([1000]);
+  });
+  it('refuses a bad interval', async () => {
+    const fake = fakeIo();
+    expect(await run(['watch', '--interval', '0'], stdin(), fake.io)).toBe(2);
+    expect(fake.err[0]).toBe('bottega: --interval must be a number of seconds, at least 1\n\n');
+    expect(await run(['channel', '--interval', 'soon'], stdin(), fake.io)).toBe(2);
+  });
+  it('starts the channel, which waits for the hook marker', async () => {
+    const fake = fakeIo({
+      env: { CLAUDE_PID: '1' },
+      exec: () => ({ status: 1, stdout: '', stderr: '' }),
+    });
+    fake.io.readFile = () => null;
+    expect(await run(['channel', '--once'], stdin(), fake.io)).toBe(0);
+    expect(fake.err[0]).toContain('no session marker found');
   });
 });

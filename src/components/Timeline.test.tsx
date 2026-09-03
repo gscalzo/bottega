@@ -92,7 +92,9 @@ describe('Timeline', () => {
           author: { type: 'owner' },
           body: 'note',
           toAgentId: 'abcd-9',
-          deliveredTo: [{ agentId: 'abcd-9', agentName: 'claude · r · abcd', at: now }],
+          deliveredTo: [
+            { agentId: 'abcd-9', agentName: 'claude · r · abcd', at: now, via: 'hook' },
+          ],
         }),
         message({ id: 2, kind: 'owner', author: { type: 'owner' }, body: 'unseen' }),
       ],

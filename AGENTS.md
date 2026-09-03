@@ -34,7 +34,9 @@ superseding one (old one marked `superseded-by-NNNN`), never a silent change.
 - An agent is a harness session; a room is a repository (ADR-0004). States and
   the staleness clock are `shared/rules.ts` (ADR-0005), the one place.
 - Agents never read each other (ADR-0002). The delivery filter in
-  `worker/db.ts` is where that would change, and only with a record.
+  `worker/db.ts` is where that would change, and only with a record. The
+  watcher reads the whole board with the machine token but never injects it
+  into a session (ADR-0015).
 - The hook path never blocks an agent: exit 0, silent, short timeouts (ADR-0010).
 - Everything is kept; excerpts are capped when written (ADR-0006, ADR-0014).
 
@@ -44,9 +46,12 @@ superseding one (old one marked `superseded-by-NNNN`), never a silent change.
 - `worker/` — Hono API: `access.ts` (JWT), `routes-agent.ts` (hook + skill),
   `routes-owner.ts` (board), `db.ts` (every SQL statement), `views.ts`
 - `agent/` — the client bundled to `~/.bottega/bin/bottega.mjs`: `hook.ts`,
-  `cli.ts`, `session.ts`, `config.ts`, `api.ts`, `io.ts`
+  `cli.ts`, `session.ts`, `config.ts`, `api.ts`, `io.ts`; the watcher
+  (`watch.ts`, `notify.ts`), the Claude Code channel (`channel.ts`) and the
+  bar renderers (`status.ts`) of ADR-0015
 - `src/` — the board: `lib/` (api, copy, format, usePoll), `components/`
   (Tag, Bench, Compose, Timeline, Shell), `screens/` (Home, Room, Agent)
 - `skills/bottega/SKILL.md` — what an agent reads to use Bottega
+- `widgets/` — the SwiftBar plugin and the Waybar module
 - `scripts/` — the gate scripts, `install-agent.mjs`, `smoke-hooks.mjs`
 - `migrations/` — D1 schema; `docs/adr/` — the decisions

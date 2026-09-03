@@ -19,3 +19,4 @@ records use `template.md`.
 | 0012 | [Quality gates aligned with raffaello](0012-quality-gates-aligned-with-raffaello.md)                                     |
 | 0013 | [Deploy to bottega.effectivecode.co.uk from main, behind Access](0013-deploy-to-bottega-subdomain.md)                    |
 | 0014 | [Keep everything; cap excerpts at write time](0014-keep-everything.md)                                                   |
+| 0015 | [The watcher: waking idle agents, the menu bar, and notifications](0015-the-watcher.md)                                  |

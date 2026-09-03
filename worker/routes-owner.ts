@@ -10,30 +10,20 @@ import { requireOwner } from './access';
 import type { AppContext, Clock } from './app';
 import { readBody } from './body';
 import type { Body } from './body';
+import { loadBoard } from './board';
 import type { MessageRow, NewMessage } from './db';
 import {
-  countOpenSuggestions,
   getAgent,
   getRoom,
   insertMessage,
-  latestMessageAtByRoom,
   listAgentEvents,
   listAgentMessages,
-  listAgentsSince,
   listDeliveries,
   listRoomAgentsSince,
   listRoomMessages,
-  listRooms,
   setHandled,
 } from './db';
-import {
-  agentView,
-  buildBoard,
-  compareAgents,
-  eventView,
-  messageViews,
-  newMessageView,
-} from './views';
+import { agentView, compareAgents, eventView, messageViews, newMessageView } from './views';
 
 type Ctx = Context<AppContext>;
 type IdCtx = Context<AppContext, '/:id'>;
@@ -51,15 +41,7 @@ async function withDeliveries(db: D1Database, rows: MessageRow[]): Promise<Messa
 }
 
 async function board(c: Ctx, now: Clock) {
-  const db = c.env.DB;
-  const at = now();
-  const [rooms, agents, lastMessageAt, open] = await Promise.all([
-    listRooms(db),
-    listAgentsSince(db, at - BOARD_WINDOW_MS),
-    latestMessageAtByRoom(db),
-    countOpenSuggestions(db),
-  ]);
-  return c.json(buildBoard(rooms, agents, lastMessageAt, at, open));
+  return c.json(await loadBoard(c.env.DB, now()));
 }
 
 async function room(c: IdCtx, now: Clock) {

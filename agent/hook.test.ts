@@ -172,38 +172,60 @@ describe('planHook', () => {
 });
 
 describe('recordLocally', () => {
-  const plan = (event: string, stdin: string, fake = fakeIo()) => {
-    const p = planHook(fake.io, 'claude', stdin);
+  const plan = async (event: string, stdin: string, fake = fakeIo(), harness = 'claude') => {
+    const p = planHook(fake.io, harness, stdin);
     if (!p) throw new Error('no plan');
     expect(p.req.event).toBe(event);
-    recordLocally(fake.io, p);
+    await recordLocally(fake.io, p);
     return fake;
   };
-  it('leaves a marker on session_start, and an env export when the harness offers one', () => {
-    const bare = plan('session_start', input('SessionStart'));
+  const PID_MARKER = '/home/gio/.bottega/state/pid/16621';
+  it('leaves a marker on session_start, and an env export when the harness offers one', async () => {
+    const bare = await plan(
+      'session_start',
+      input('SessionStart'),
+      fakeIo({ exec: () => ({ status: 1, stdout: '', stderr: '' }) }),
+    );
     expect(bare.files.get(MARKER)).toBe('s1\n');
     expect([...bare.files.keys()]).toEqual([MARKER]);
-    const fake = fakeIo({ env: { CLAUDE_ENV_FILE: '/tmp/envfile' } });
-    plan('session_start', input('SessionStart'), fake);
+    const fake = fakeIo({ env: { CLAUDE_ENV_FILE: '/tmp/envfile', CLAUDE_PID: '16621' } });
+    await plan('session_start', input('SessionStart'), fake);
     expect(fake.files.get('/tmp/envfile')).toBe('export BOTTEGA_SESSION_ID=s1\n');
+    expect(fake.files.get(PID_MARKER)).toBe('s1\n');
   });
-  it('stamps heartbeats', () => {
-    expect(plan('heartbeat', input('PostToolUse')).files.get(HB)).toBe(`${NOW}\n`);
+  it('leaves no pid marker for Codex, which has no channel', async () => {
+    const fake = await plan(
+      'session_start',
+      input('SessionStart'),
+      fakeIo({ env: { CLAUDE_PID: '16621' } }),
+      'codex',
+    );
+    expect([...fake.files.keys()]).toEqual([MARKER]);
+    expect(fake.execs).toEqual([]);
   });
-  it('cleans up on session_end, but only its own marker', () => {
-    const own = fakeIo({ files: { [MARKER]: 's1\n', [HB]: '1' } });
-    plan('session_end', input('SessionEnd'), own);
+  it('stamps heartbeats', async () => {
+    expect((await plan('heartbeat', input('PostToolUse'))).files.get(HB)).toBe(`${NOW}\n`);
+  });
+  it('cleans up on session_end, but only its own marker', async () => {
+    const own = fakeIo({
+      env: { CLAUDE_PID: '16621' },
+      files: { [MARKER]: 's1\n', [HB]: '1', [PID_MARKER]: 's1\n' },
+    });
+    await plan('session_end', input('SessionEnd'), own);
     expect([...own.files.keys()]).toEqual([]);
-    const other = fakeIo({ files: { [MARKER]: 's2\n', [HB]: '1' } });
-    plan('session_end', input('SessionEnd'), other);
+    const other = fakeIo({
+      files: { [MARKER]: 's2\n', [HB]: '1' },
+      exec: () => ({ status: 1, stdout: '', stderr: '' }),
+    });
+    await plan('session_end', input('SessionEnd'), other);
     expect([...other.files.keys()]).toEqual([MARKER]);
   });
-  it('touches nothing on prompts and stops', () => {
-    expect(plan('prompt', input('UserPromptSubmit')).files.size).toBe(0);
-    expect(plan('stop', input('Stop')).files.size).toBe(0);
+  it('touches nothing on prompts and stops', async () => {
+    expect((await plan('prompt', input('UserPromptSubmit'))).files.size).toBe(0);
+    expect((await plan('stop', input('Stop'))).files.size).toBe(0);
     const kept = fakeIo({ files: { [MARKER]: 's1\n', [HB]: '1' } });
-    plan('prompt', input('UserPromptSubmit'), kept);
-    plan('stop', input('Stop'), kept);
+    await plan('prompt', input('UserPromptSubmit'), kept);
+    await plan('stop', input('Stop'), kept);
     expect([...kept.files.keys()].sort()).toEqual([MARKER, HB].sort());
   });
 });

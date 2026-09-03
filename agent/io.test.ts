@@ -25,9 +25,39 @@ describe('nodeIo files', () => {
   });
 });
 
+describe('nodeIo exec and sleep', () => {
+  it('runs a command and reports status and output', async () => {
+    const ok = await nodeIo.exec(
+      'node',
+      ['-e', "process.stdout.write('out'); process.stderr.write('err')"],
+      5000,
+    );
+    expect(ok).toEqual({ status: 0, stdout: 'out', stderr: 'err' });
+    const failed = await nodeIo.exec(
+      'node',
+      ['-e', "process.stderr.write('boom'); process.exit(3)"],
+      5000,
+    );
+    expect(failed).toEqual({ status: 3, stdout: '', stderr: 'boom' });
+    const missing = await nodeIo.exec('definitely-not-a-command-xyz', [], 5000);
+    expect(missing.status).toBeNull();
+    expect(missing.stderr).toContain('ENOENT');
+    const slow = await nodeIo.exec('node', ['-e', 'setTimeout(() => {}, 5000)'], 100);
+    expect(slow.status).toBeNull();
+  });
+  it('sleeps for about the time asked', async () => {
+    const before = Date.now();
+    await nodeIo.sleep(30);
+    expect(Date.now() - before).toBeGreaterThanOrEqual(25);
+  });
+});
+
 describe('nodeIo environment', () => {
-  it('reports the process environment, cwd, home, host and clock', () => {
+  it('reports the process environment, cwd, home, host, pids, platform and clock', () => {
     expect(nodeIo.env).toBe(process.env);
+    expect(nodeIo.platform).toBe(process.platform);
+    expect(nodeIo.pid).toBe(process.pid);
+    expect(nodeIo.ppid).toBe(process.ppid);
     expect(nodeIo.cwd()).toBe(process.cwd());
     expect(nodeIo.homedir().length).toBeGreaterThan(0);
     expect(nodeIo.hostname().length).toBeGreaterThan(0);

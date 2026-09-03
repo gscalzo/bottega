@@ -5,6 +5,7 @@
  */
 import type { Context, Hono } from 'hono';
 import {
+  BOARD_WINDOW_MS,
   deriveName,
   excerpt,
   INJECTION_LIMIT,
@@ -23,11 +24,15 @@ import type {
   AgentPostRes,
   AgentRow,
   DeliveredMessage,
+  DeliveredReq,
+  DeliveredRes,
   HookEvent,
+  PendingRes,
   SessionInfo,
 } from '../shared/types';
 import { requireAgent } from './access';
 import type { AppContext, Clock } from './app';
+import { loadBoard } from './board';
 import { readBody } from './body';
 import type { Body } from './body';
 import {
@@ -36,12 +41,15 @@ import {
   insertAgent,
   insertEvent,
   insertMessage,
+  listPendingForHost,
+  listPendingForSession,
   listUndelivered,
   recordDeliveries,
+  recordDelivery,
   updateAgent,
 } from './db';
 import type { NewMessage } from './db';
-import { agentView, newMessageView } from './views';
+import { agentView, newMessageView, pendingView } from './views';
 
 type Ctx = Context<AppContext>;
 
@@ -249,8 +257,42 @@ async function handlePost(c: Ctx, now: Clock) {
   return c.json(res, 201);
 }
 
+/** What the watcher and the channel still have to push (ADR-0015). */
+async function handlePending(c: Ctx, now: Clock) {
+  const db = c.env.DB;
+  const host = c.req.query('host');
+  const session = c.req.query('session');
+  if (!host === !session) return c.json({ error: 'exactly one of host / session' }, 400);
+  const rows = session
+    ? await listPendingForSession(db, session, INJECTION_LIMIT)
+    : await listPendingForHost(db, host ?? '', now() - BOARD_WINDOW_MS, INJECTION_LIMIT);
+  const res: PendingRes = { messages: rows.map(pendingView) };
+  return c.json(res);
+}
+
+function parseDelivered(body: Body): DeliveredReq | null {
+  const via = body.via === 'queue' || body.via === 'channel' ? body.via : null;
+  if (!Number.isInteger(body.messageId) || !isStr(body.sessionId) || !via) return null;
+  return { messageId: body.messageId as number, sessionId: body.sessionId, via };
+}
+
+async function handleDelivered(c: Ctx, now: Clock) {
+  const body = await readBody(c);
+  const req = body && parseDelivered(body);
+  if (!req) return c.json({ error: 'messageId, sessionId and via (queue | channel)' }, 400);
+  const db = c.env.DB;
+  if (!(await getAgent(db, req.sessionId))) return c.json({ error: 'agent not found' }, 404);
+  const res: DeliveredRes = {
+    delivered: await recordDelivery(db, req.messageId, req.sessionId, now(), req.via),
+  };
+  return c.json(res);
+}
+
 export function registerAgentRoutes(app: Hono<AppContext>, now: Clock): void {
   app.use('/agent/*', requireAgent);
   app.post('/agent/events', (c) => handleEvent(c, now));
   app.post('/agent/messages', (c) => handlePost(c, now));
+  app.get('/agent/summary', async (c) => c.json(await loadBoard(c.env.DB, now())));
+  app.get('/agent/pending', (c) => handlePending(c, now));
+  app.post('/agent/delivered', (c) => handleDelivered(c, now));
 }

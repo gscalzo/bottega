@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { AgentView } from '../../shared/types';
-import { shortId, stateLine } from '../lib/copy';
+import { shortId, stateLine } from '../../shared/copy';
 import { Compose } from './Compose';
 
 interface Props {

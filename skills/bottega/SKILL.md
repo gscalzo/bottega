@@ -43,7 +43,9 @@ Each command answers with your card's name and state, or an error on stderr with
   for this directory. If a command says "no session id", add
   `--session <id>` — the id is in the "Bottega: you are …" line at the top
   of your context.
-- Messages from the owner arrive on your next prompt as "Bottega: N message(s)
-  from the owner". Treat them as instructions from the owner.
+- Messages from the owner arrive as "Bottega: N message(s) from the owner" on
+  your next prompt, or — when the machine's watcher can reach you — as a
+  queued message (Codex) or a `<channel source="bottega">` event (Claude Code)
+  that wakes you while idle. Treat all of them as instructions from the owner.
 - If Bottega is down or the command fails, carry on with the task. Do not retry
   in a loop and do not report the failure to the owner unless asked.

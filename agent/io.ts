@@ -2,7 +2,7 @@
  * Everything the agent client does to the outside world, behind one
  * interface so the logic is testable with a fake. `nodeIo` is the real one.
  */
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, hostname } from 'node:os';
 import { dirname } from 'node:path';
@@ -19,12 +19,25 @@ export interface FetchResult {
   body: string;
 }
 
+export interface ExecResult {
+  /** null when the command could not be started at all. */
+  status: number | null;
+  stdout: string;
+  stderr: string;
+}
+
 export interface Io {
   env: Record<string, string | undefined>;
+  platform: string;
+  pid: number;
+  ppid: number;
   cwd(): string;
   homedir(): string;
   hostname(): string;
   now(): number;
+  sleep(ms: number): Promise<void>;
+  /** Runs a command; never throws. */
+  exec(cmd: string, args: readonly string[], timeoutMs: number): Promise<ExecResult>;
   /** null when the file does not exist. */
   readFile(path: string): string | null;
   /** Creates the parent directories. */
@@ -60,6 +73,15 @@ function gitCommonDir(cwd: string): string | null {
   }
 }
 
+function execAsync(cmd: string, args: readonly string[], timeoutMs: number): Promise<ExecResult> {
+  return new Promise((resolve) => {
+    execFile(cmd, [...args], { encoding: 'utf8', timeout: timeoutMs }, (error, stdout, stderr) => {
+      const status = error === null ? 0 : typeof error.code === 'number' ? error.code : null;
+      resolve({ status, stdout, stderr: error && status === null ? error.message : stderr });
+    });
+  });
+}
+
 async function fetchWithTimeout(url: string, init: FetchInit): Promise<FetchResult> {
   const res = await fetch(url, {
     method: init.method,
@@ -72,10 +94,15 @@ async function fetchWithTimeout(url: string, init: FetchInit): Promise<FetchResu
 
 export const nodeIo: Io = {
   env: process.env,
+  platform: process.platform,
+  pid: process.pid,
+  ppid: process.ppid,
   cwd: () => process.cwd(),
   homedir,
   hostname,
   now: () => Date.now(),
+  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  exec: execAsync,
   readFile: readOrNull,
   writeFile: (path, content) => {
     mkdirSync(dirname(path), { recursive: true });

@@ -124,12 +124,12 @@ describe('messageViews', () => {
         { ...base, id: 2, agent_id: 'a1', author_name: 'claude · r · a1', kind: 'done' },
         { ...base, id: 3, agent_id: 'a2', author_name: null, kind: 'progress', handled: 1 },
       ],
-      [{ message_id: 1, agent_id: 'a1', agent_name: 'claude · r · a1', at: 9 }],
+      [{ message_id: 1, agent_id: 'a1', agent_name: 'claude · r · a1', at: 9, via: 'queue' }],
     );
     expect(owner).toMatchObject({
       author: { type: 'owner' },
       handled: false,
-      deliveredTo: [{ agentId: 'a1', agentName: 'claude · r · a1', at: 9 }],
+      deliveredTo: [{ agentId: 'a1', agentName: 'claude · r · a1', at: 9, via: 'queue' }],
     });
     expect(named).toMatchObject({
       author: { type: 'agent', id: 'a1', name: 'claude · r · a1' },

@@ -2,6 +2,7 @@
 
 **Status:** accepted
 **Date:** 2026-09-03
+**Amended by:** [0015](0015-the-watcher.md) — a watcher and a channel deliver before the next prompt
 
 ## Context
 

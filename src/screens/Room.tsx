@@ -5,7 +5,7 @@ import { Shell } from '../components/Shell';
 import { Tag } from '../components/Tag';
 import { Timeline } from '../components/Timeline';
 import { api } from '../lib/api';
-import { hereCount } from '../lib/copy';
+import { hereCount } from '../../shared/copy';
 import { usePoll } from '../lib/usePoll';
 
 const POLL_MS = 5000;
