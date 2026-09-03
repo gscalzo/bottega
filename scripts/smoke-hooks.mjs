@@ -7,7 +7,7 @@
  * Runs `vite dev` on a spare port for the duration; needs nothing else.
  */
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -62,6 +62,12 @@ async function waitForServer(deadlineMs) {
   throw new Error(`no server on ${URL_BASE} after ${deadlineMs} ms`);
 }
 
+// Without .dev.vars the Access vars from wrangler.jsonc apply and every call is
+// a 401 (CI has no .dev.vars; it is git-ignored). Blank them for the run.
+const DEV_VARS = path.join(ROOT, '.dev.vars');
+const ownsDevVars = !existsSync(DEV_VARS);
+if (ownsDevVars) copyFileSync(path.join(ROOT, '.dev.vars.example'), DEV_VARS);
+
 console.log('• bundling the client');
 run('npm', ['run', '--silent', 'build:agent']);
 console.log('• applying migrations to the local D1');
@@ -115,6 +121,7 @@ try {
 } finally {
   process.kill(-server.pid, 'SIGTERM');
   rmSync(HOME, { recursive: true, force: true });
+  if (ownsDevVars) rmSync(DEV_VARS, { force: true });
 }
 
 console.log(process.exitCode ? 'smoke: FAILED' : '✓ smoke: the hook path works end to end');
