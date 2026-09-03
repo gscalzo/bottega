@@ -203,13 +203,30 @@ describe('status, watch and channel commands', () => {
     expect(fake.err[0]).toBe('bottega: --interval must be a number of seconds, at least 1\n\n');
     expect(await run(['channel', '--interval', 'soon'], stdin(), fake.io)).toBe(2);
   });
-  it('starts the channel, which waits for the hook marker', async () => {
+  it('starts the channel, which stays passive without the channel flag', async () => {
     const fake = fakeIo({
       env: { CLAUDE_PID: '1' },
-      exec: () => ({ status: 1, stdout: '', stderr: '' }),
+      exec: () => ({ status: 0, stdout: 'claude\n', stderr: '' }),
     });
-    fake.io.readFile = () => null;
     expect(await run(['channel', '--once'], stdin(), fake.io)).toBe(0);
-    expect(fake.err[0]).toContain('no session marker found');
+    expect(fake.err[0]).toContain('not enabled for this session');
+  });
+  it('serves the channel for one pass with the interval asked', async () => {
+    const fake = fakeIo({
+      env: { CLAUDE_PID: '1' },
+      exec: () => ({
+        status: 0,
+        stdout: 'claude --dangerously-load-development-channels server:bottega\n',
+        stderr: '',
+      }),
+      files: { '/home/gio/.bottega/state/pid/1': 'sess-9\n' },
+      responses: [json(200, { messages: [] })],
+    });
+    expect(await run(['channel', '--once', '--interval', '3'], stdin(), fake.io)).toBe(0);
+    expect(fake.err).toEqual(['bottega channel: serving session sess-9\n']);
+    expect(fake.sleeps).toEqual([3000]);
+    expect(fake.requests[0]?.url).toBe(
+      'https://bottega.effectivecode.co.uk/api/agent/pending?session=sess-9',
+    );
   });
 });

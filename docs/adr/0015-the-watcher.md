@@ -34,7 +34,10 @@ Omarchy's Waybar, without opening a browser.
   writes the session id under `~/.bottega/state/pid/<claude pid>`; the
   channel finds its Claude ancestor, reads that marker, then polls
   `GET /api/agent/pending?session=` and pushes each note as a channel event
-  (`via: 'channel'`). Sessions must be launched with the preview flag.
+  (`via: 'channel'`). Sessions must be launched with the preview flag;
+  Claude Code loads the server in every session regardless, so the channel
+  checks its Claude process's command line for `server:bottega` and stays
+  passive otherwise, leaving every note to the hook path.
 - **The hook path stays** (ADR-0007): whatever the watcher and the channel
   did not deliver is injected on the next prompt. `deliveries.via` records
   which path won, and the board shows it.

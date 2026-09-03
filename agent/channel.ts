@@ -47,10 +47,23 @@ export function createChannelServer(): { server: Server; sink: ChannelSink } {
   return { server, sink };
 }
 
+/**
+ * Claude Code loads this server in every session but injects its events
+ * only when the session was started with the channel flag; without it a
+ * pushed note would vanish while being marked delivered. So the channel
+ * looks at its Claude process's command line first.
+ */
+export async function channelEnabled(io: Io, claudePid: string): Promise<boolean> {
+  const { status, stdout } = await io.exec('ps', ['-o', 'args=', '-p', claudePid], 3000);
+  return status === 0 && stdout.includes('server:bottega');
+}
+
 /** Waits for the hook's marker; null when it never shows up in time. */
-export async function waitForSessionId(io: Io, timeoutMs: number): Promise<string | null> {
-  const pid = await findClaudePid(io);
-  if (pid === null) return null;
+export async function waitForSessionId(
+  io: Io,
+  pid: string,
+  timeoutMs: number,
+): Promise<string | null> {
   const path = pidMarkerPath(io, pid);
   const deadline = io.now() + timeoutMs;
   for (;;) {
@@ -95,7 +108,20 @@ export async function runChannel(io: Io, config: Config, opts: ChannelOptions): 
   // Stryker disable next-line ArrowFunction: the default transport is the process's own stdio, which only Claude Code provides
   const connect = opts.connect ?? ((s) => s.connect(new StdioServerTransport()));
   await connect(server);
-  const sessionId = await waitForSessionId(io, opts.sessionTimeoutMs);
+  const pid = await findClaudePid(io);
+  if (pid === null) {
+    io.stderr(
+      'bottega channel: no Claude Code process found; notes will arrive through the hook only\n',
+    );
+    return 0;
+  }
+  if (!(await channelEnabled(io, pid))) {
+    io.stderr(
+      'bottega channel: not enabled for this session; notes will arrive through the hook only\n',
+    );
+    return 0;
+  }
+  const sessionId = await waitForSessionId(io, pid, opts.sessionTimeoutMs);
   if (sessionId === null) {
     io.stderr(
       'bottega channel: no session marker found; notes will arrive through the hook only\n',

@@ -3,6 +3,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { describe, expect, it, vi } from 'vitest';
 import {
   CHANNEL_INSTRUCTIONS,
+  channelEnabled,
   channelTick,
   createChannelServer,
   runChannel,
@@ -42,24 +43,46 @@ describe('createChannelServer', () => {
   });
 });
 
+const ENABLED = { CLAUDE_PID: '16621' };
+const psArgs = (args: string) => (cmd: string, a: string[]) =>
+  cmd === 'ps' && a[1] === 'args='
+    ? { status: 0, stdout: `${args}\n`, stderr: '' }
+    : { status: 0, stdout: '', stderr: '' };
+const flagged = psArgs('claude --dangerously-load-development-channels server:bottega');
+
+describe('channelEnabled', () => {
+  it('is true only when the Claude process was started with the channel', async () => {
+    const on = fakeIo({ exec: flagged });
+    expect(await channelEnabled(on.io, '16621')).toBe(true);
+    expect(on.execs).toEqual([
+      { cmd: 'ps', args: ['-o', 'args=', '-p', '16621'], timeoutMs: 3000 },
+    ]);
+    expect(
+      await channelEnabled(fakeIo({ exec: psArgs('claude --channels plugin:telegram') }).io, '1'),
+    ).toBe(false);
+    expect(
+      await channelEnabled(
+        fakeIo({ exec: () => ({ status: 1, stdout: 'server:bottega', stderr: '' }) }).io,
+        '1',
+      ),
+    ).toBe(false);
+  });
+});
+
 describe('waitForSessionId', () => {
   it('reads the marker the hook left, polling until it appears', async () => {
     const fake = fakeIo({
-      env: { CLAUDE_PID: '16621' },
       onSleep: (f) => {
         if (f.sleeps.length === 2) f.files.set(MARKER, 'sess-1\n');
       },
     });
-    expect(await waitForSessionId(fake.io, 10_000)).toBe('sess-1');
+    expect(await waitForSessionId(fake.io, '16621', 10_000)).toBe('sess-1');
     expect(fake.sleeps).toEqual([500, 500]);
   });
-  it('gives up at the deadline, or at once without a Claude ancestor', async () => {
-    const fake = fakeIo({ env: { CLAUDE_PID: '16621' } });
-    expect(await waitForSessionId(fake.io, 1000)).toBeNull();
+  it('gives up at the deadline', async () => {
+    const fake = fakeIo();
+    expect(await waitForSessionId(fake.io, '16621', 1000)).toBeNull();
     expect(fake.sleeps).toEqual([500, 500]);
-    const orphan = fakeIo({ exec: () => ({ status: 1, stdout: '', stderr: '' }) });
-    expect(await waitForSessionId(orphan.io, 1200)).toBeNull();
-    expect(orphan.sleeps).toEqual([]);
   });
 });
 
@@ -98,7 +121,8 @@ describe('channelTick', () => {
 describe('runChannel', () => {
   it('connects, waits for the session, then serves passes, reporting a failure once', async () => {
     const fake = fakeIo({
-      env: { CLAUDE_PID: '16621' },
+      env: ENABLED,
+      exec: flagged,
       files: { [MARKER]: 'sess-1' },
       responses: [
         json(200, { messages: [] }),
@@ -125,8 +149,31 @@ describe('runChannel', () => {
     ]);
     expect(fake.sleeps).toEqual([50, 50, 50, 50, 50]);
   });
+  it('stays passive in a session started without the channel flag, or without a Claude ancestor', async () => {
+    const opts = {
+      intervalMs: 50,
+      sessionTimeoutMs: 0,
+      passes: 1,
+      connect: () => Promise.resolve(),
+    };
+    const unflagged = fakeIo({ env: ENABLED, files: { [MARKER]: 'sess-1' } });
+    expect(await runChannel(unflagged.io, config, opts)).toBe(0);
+    expect(unflagged.err).toEqual([
+      'bottega channel: not enabled for this session; notes will arrive through the hook only\n',
+    ]);
+    const orphan = fakeIo({
+      exec: () => ({ status: 1, stdout: '', stderr: '' }),
+      files: { [MARKER]: 'sess-1' },
+    });
+    expect(await runChannel(orphan.io, config, opts)).toBe(0);
+    expect(orphan.err).toEqual([
+      'bottega channel: no Claude Code process found; notes will arrive through the hook only\n',
+    ]);
+    expect(unflagged.requests).toEqual([]);
+    expect(orphan.requests).toEqual([]);
+  });
   it('stays quiet when no marker ever appears', async () => {
-    const fake = fakeIo({ env: { CLAUDE_PID: '16621' } });
+    const fake = fakeIo({ env: ENABLED, exec: flagged });
     expect(
       await runChannel(fake.io, config, {
         intervalMs: 50,
@@ -143,7 +190,8 @@ describe('runChannel', () => {
   it('runs until told to stop when no pass count is given', async () => {
     let passes = 0;
     const fake = fakeIo({
-      env: { CLAUDE_PID: '16621' },
+      env: ENABLED,
+      exec: flagged,
       files: { [MARKER]: 'sess-1' },
       onSleep: (f) => {
         passes += 1;
