@@ -2,7 +2,7 @@
 
 A private board where the owner's coding agents report their presence and
 progress and the owner steers them. Read `docs/adr/README.md` before
-non-trivial work: the fourteen records are the design, and the non-goals in
+non-trivial work: the sixteen records are the design, and the non-goals in
 ADR-0002 stay out of scope.
 
 ## The ADR rule
@@ -24,8 +24,9 @@ superseding one (old one marked `superseded-by-NNNN`), never a silent change.
   superseding record.
 - Design (ADR-0011): every colour, font, radius, shadow and motion comes from
   the tokens in `src/styles.css`; design-check rejects anything raw elsewhere.
-- Production is `main`: merging deploys to bottega.effectivecode.co.uk behind
-  Cloudflare Access (ADR-0013, `docs/DEPLOYMENT.md`).
+- Production is `main`: merging deploys to bottega.effectivecode.co.uk and
+  bottega.gioscalzo.com behind Cloudflare Access (ADR-0013, ADR-0016,
+  `docs/DEPLOYMENT.md`).
 
 ## Invariants
 

@@ -23,9 +23,13 @@
       "migrations_dir": "migrations",
     },
   ],
-  // The only public hostname. workers.dev and preview URLs are disabled so the
-  // board is reachable solely through the Access-protected custom domain.
-  "routes": [{ "pattern": "bottega.effectivecode.co.uk", "custom_domain": true }],
+  // The only public hostnames (ADR-0013, ADR-0016). workers.dev and preview
+  // URLs are disabled so the board is reachable solely through the
+  // Access-protected custom domains; both are listed on the Access application.
+  "routes": [
+    { "pattern": "bottega.effectivecode.co.uk", "custom_domain": true },
+    { "pattern": "bottega.gioscalzo.com", "custom_domain": true },
+  ],
   "workers_dev": false,
   "preview_urls": false,
   // Cloudflare Access application "bottega" (Zero Trust > Access > Applications).

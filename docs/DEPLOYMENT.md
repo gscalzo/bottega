@@ -1,8 +1,9 @@
 # Deployment
 
-Bottega runs as one Cloudflare Worker at `bottega.effectivecode.co.uk`
-behind Cloudflare Access (ADR-0009, ADR-0013). Everything below is done once
-by the owner; after that, merging to `main` deploys.
+Bottega runs as one Cloudflare Worker at `bottega.effectivecode.co.uk` and
+`bottega.gioscalzo.com` behind Cloudflare Access (ADR-0009, ADR-0013,
+ADR-0016). Both zones live in the same Cloudflare account. Everything below
+is done once by the owner; after that, merging to `main` deploys.
 
 ## 1. Cloudflare resources
 
@@ -12,8 +13,9 @@ npx wrangler d1 create bottega          # paste the database_id into wrangler.js
 
 Zero Trust → **Access → Applications → Add an application → Self-hosted**:
 
-- Name `bottega`, domain `bottega.effectivecode.co.uk`, session duration
-  730 h.
+- Name `bottega`, domain `bottega.effectivecode.co.uk` plus the additional
+  domain `bottega.gioscalzo.com` (one application, one AUD), session
+  duration 730 h.
 - Policies: select the account's reusable **Allow owner** policy (the one
   raffaello and intonato use: Emails → the owner's address).
 - Copy the application's **Audience (AUD) tag** into `ACCESS_AUD` in
