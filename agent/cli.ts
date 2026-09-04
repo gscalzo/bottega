@@ -139,8 +139,9 @@ async function daemon(io: Io, args: ParsedArgs) {
   const ms = intervalMs(args);
   if (ms === null) return usage(io, '--interval must be a number of seconds, at least 1');
   const passes = args.flags.has('once') ? 1 : undefined;
-  if (args.command === 'watch') return runWatch(io, loadConfig(io), { intervalMs: ms, passes });
-  return runChannel(io, loadConfig(io), {
+  const config = () => loadConfig(io);
+  if (args.command === 'watch') return runWatch(io, config, { intervalMs: ms, passes });
+  return runChannel(io, config, {
     intervalMs: ms,
     sessionTimeoutMs: SESSION_TIMEOUT_MS,
     passes,

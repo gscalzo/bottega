@@ -129,7 +129,7 @@ describe('runWatch', () => {
         json(200, { messages: [] }),
       ],
     });
-    expect(await runWatch(fake.io, config, { intervalMs: 1234, passes: 5 })).toBe(0);
+    expect(await runWatch(fake.io, () => config, { intervalMs: 1234, passes: 5 })).toBe(0);
     expect(fake.sleeps).toEqual([1234, 1234, 1234, 1234, 1234]);
     expect(fake.out[0]).toBe('bottega watch: watching https://b for macbook\n');
     expect(fake.err).toEqual([
@@ -146,7 +146,7 @@ describe('runWatch', () => {
         if (passes === 3) f.io.sleep = () => Promise.reject(new Error('stop'));
       },
     });
-    await expect(runWatch(fake.io, config, { intervalMs: 1 })).rejects.toThrow('stop');
+    await expect(runWatch(fake.io, () => config, { intervalMs: 1 })).rejects.toThrow('stop');
     expect(passes).toBe(3);
   });
 });

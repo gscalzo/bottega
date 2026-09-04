@@ -133,7 +133,7 @@ describe('runChannel', () => {
     });
     const connect = vi.fn(() => Promise.resolve());
     expect(
-      await runChannel(fake.io, config, {
+      await runChannel(fake.io, () => config, {
         intervalMs: 50,
         sessionTimeoutMs: 0,
         passes: 5,
@@ -157,7 +157,7 @@ describe('runChannel', () => {
       connect: () => Promise.resolve(),
     };
     const unflagged = fakeIo({ env: ENABLED, files: { [MARKER]: 'sess-1' } });
-    expect(await runChannel(unflagged.io, config, opts)).toBe(0);
+    expect(await runChannel(unflagged.io, () => config, opts)).toBe(0);
     expect(unflagged.err).toEqual([
       'bottega channel: not enabled for this session; notes will arrive through the hook only\n',
     ]);
@@ -165,7 +165,7 @@ describe('runChannel', () => {
       exec: () => ({ status: 1, stdout: '', stderr: '' }),
       files: { [MARKER]: 'sess-1' },
     });
-    expect(await runChannel(orphan.io, config, opts)).toBe(0);
+    expect(await runChannel(orphan.io, () => config, opts)).toBe(0);
     expect(orphan.err).toEqual([
       'bottega channel: no Claude Code process found; notes will arrive through the hook only\n',
     ]);
@@ -175,7 +175,7 @@ describe('runChannel', () => {
   it('stays quiet when no marker ever appears', async () => {
     const fake = fakeIo({ env: ENABLED, exec: flagged });
     expect(
-      await runChannel(fake.io, config, {
+      await runChannel(fake.io, () => config, {
         intervalMs: 50,
         sessionTimeoutMs: 0,
         passes: 1,
@@ -199,7 +199,7 @@ describe('runChannel', () => {
       },
     });
     await expect(
-      runChannel(fake.io, config, {
+      runChannel(fake.io, () => config, {
         intervalMs: 1,
         sessionTimeoutMs: 0,
         connect: () => Promise.resolve(),

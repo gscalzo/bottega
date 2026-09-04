@@ -103,7 +103,7 @@ export interface ChannelOptions {
   connect?: (server: Server) => Promise<void>;
 }
 
-export async function runChannel(io: Io, config: Config, opts: ChannelOptions): Promise<0> {
+export async function runChannel(io: Io, config: () => Config, opts: ChannelOptions): Promise<0> {
   const { server, sink } = createChannelServer();
   // Stryker disable next-line ArrowFunction: the default transport is the process's own stdio, which only Claude Code provides
   const connect = opts.connect ?? ((s) => s.connect(new StdioServerTransport()));
@@ -132,7 +132,7 @@ export async function runChannel(io: Io, config: Config, opts: ChannelOptions): 
   const report = new ErrorOnce(io, 'bottega channel');
   for (let pass = 0; opts.passes === undefined || pass < opts.passes; pass++) {
     try {
-      await channelTick(io, config, sessionId, sink);
+      await channelTick(io, config(), sessionId, sink);
       report.recovered();
     } catch (err) {
       report.failed(err);

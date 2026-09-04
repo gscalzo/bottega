@@ -88,13 +88,14 @@ export interface WatchOptions {
   passes?: number;
 }
 
-export async function runWatch(io: Io, config: Config, opts: WatchOptions): Promise<0> {
+/** `config` is read every pass, so a token added to ~/.bottega/env needs no restart. */
+export async function runWatch(io: Io, config: () => Config, opts: WatchOptions): Promise<0> {
   const state = newWatchState();
   const report = new ErrorOnce(io, 'bottega watch');
-  io.stdout(`bottega watch: watching ${config.url} for ${io.hostname()}\n`);
+  io.stdout(`bottega watch: watching ${config().url} for ${io.hostname()}\n`);
   for (let pass = 0; opts.passes === undefined || pass < opts.passes; pass++) {
     try {
-      await watchOnce(io, config, state);
+      await watchOnce(io, config(), state);
       report.recovered();
     } catch (err) {
       report.failed(err);

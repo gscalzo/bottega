@@ -50,5 +50,11 @@ export async function call<T>(io: Io, config: Config, req: Call): Promise<T> {
   if (res.status < 200 || res.status >= 300) {
     throw new ApiError(res.status, errorMessage(res.body, res.status));
   }
+  if (res.body.trimStart().startsWith('<')) {
+    throw new ApiError(
+      res.status,
+      'the server answered with a page, not JSON — is the Access token set?',
+    );
+  }
   return JSON.parse(res.body) as T;
 }

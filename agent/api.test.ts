@@ -47,6 +47,16 @@ describe('call', () => {
       expect(r.init.body).toBeUndefined();
     }
   });
+  it('names a login page for what it is', async () => {
+    const fake = fakeIo({ responses: [{ status: 200, body: '\n<!DOCTYPE html><html>' }] });
+    await expect(
+      call(fake.io, config, { method: 'GET', path: '/p', timeoutMs: 1 }),
+    ).rejects.toMatchObject({
+      status: 200,
+      message: 'the server answered with a page, not JSON — is the Access token set?',
+    });
+  });
+
   it('turns non-2xx answers into ApiError with the server reason', async () => {
     const fake = fakeIo({
       responses: [
